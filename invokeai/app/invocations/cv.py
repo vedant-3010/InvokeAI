@@ -4,14 +4,15 @@
 import cv2 as cv
 import numpy
 from PIL import Image, ImageOps
-from invokeai.app.invocations.primitives import ImageField, ImageOutput
 
-from invokeai.app.models.image import ImageCategory, ResourceOrigin
-from .baseinvocation import BaseInvocation, InputField, InvocationContext, invocation
+from invokeai.app.invocations.primitives import ImageField, ImageOutput
+from invokeai.app.services.image_records.image_records_common import ImageCategory, ResourceOrigin
+
+from .baseinvocation import BaseInvocation, InputField, InvocationContext, WithMetadata, WithWorkflow, invocation
 
 
 @invocation("cv_inpaint", title="OpenCV Inpaint", tags=["opencv", "inpaint"], category="inpaint", version="1.0.0")
-class CvInpaintInvocation(BaseInvocation):
+class CvInpaintInvocation(BaseInvocation, WithMetadata, WithWorkflow):
     """Simple inpaint using opencv."""
 
     image: ImageField = InputField(description="The image to inpaint")

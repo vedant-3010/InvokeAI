@@ -4,7 +4,12 @@ import { useAppSelector } from 'app/store/storeHooks';
 import { defaultSelectorOptions } from 'app/store/util/defaultMemoizeOptions';
 import { map } from 'lodash-es';
 import { useMemo } from 'react';
+import {
+  POLYMORPHIC_TYPES,
+  TYPES_WITH_INPUT_COMPONENTS,
+} from '../types/constants';
 import { isInvocationNode } from '../types/types';
+import { getSortedFilteredFieldNames } from '../util/getSortedFilteredFieldNames';
 
 export const useConnectionInputFieldNames = (nodeId: string) => {
   const selector = useMemo(
@@ -20,12 +25,16 @@ export const useConnectionInputFieldNames = (nodeId: string) => {
           if (!nodeTemplate) {
             return [];
           }
-          return map(nodeTemplate.inputs)
-            .filter((field) => field.input === 'connection')
-            .filter((field) => !field.ui_hidden)
-            .sort((a, b) => (a.ui_order ?? 0) - (b.ui_order ?? 0))
-            .map((field) => field.name)
-            .filter((fieldName) => fieldName !== 'is_intermediate');
+
+          // get the visible fields
+          const fields = map(nodeTemplate.inputs).filter(
+            (field) =>
+              (field.input === 'connection' &&
+                !POLYMORPHIC_TYPES.includes(field.type)) ||
+              !TYPES_WITH_INPUT_COMPONENTS.includes(field.type)
+          );
+
+          return getSortedFilteredFieldNames(fields);
         },
         defaultSelectorOptions
       ),

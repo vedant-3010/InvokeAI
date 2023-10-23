@@ -1,18 +1,22 @@
 import { Flex, MenuItem, Spinner } from '@chakra-ui/react';
+import { useStore } from '@nanostores/react';
 import { useAppToaster } from 'app/components/Toaster';
-import { useAppDispatch, useAppSelector } from 'app/store/storeHooks';
+import { $customStarUI } from 'app/store/nanostores/customStarUI';
+import { useAppDispatch } from 'app/store/storeHooks';
 import { setInitialCanvasImage } from 'features/canvas/store/canvasSlice';
 import {
   imagesToChangeSelected,
   isModalOpenChanged,
 } from 'features/changeBoardModal/store/slice';
 import { imagesToDeleteSelected } from 'features/deleteImageModal/store/slice';
+import { workflowLoadRequested } from 'features/nodes/store/actions';
 import { useRecallParameters } from 'features/parameters/hooks/useRecallParameters';
 import { initialImageSelected } from 'features/parameters/store/actions';
 import { useFeatureStatus } from 'features/system/hooks/useFeatureStatus';
 import { useCopyImageToClipboard } from 'features/ui/hooks/useCopyImageToClipboard';
 import { setActiveTab } from 'features/ui/store/uiSlice';
 import { memo, useCallback } from 'react';
+import { flushSync } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import {
   FaAsterisk,
@@ -25,16 +29,16 @@ import {
   FaShare,
   FaTrash,
 } from 'react-icons/fa';
-import { MdDeviceHub, MdStar, MdStarBorder } from 'react-icons/md';
+import { FaCircleNodes } from 'react-icons/fa6';
+import { MdStar, MdStarBorder } from 'react-icons/md';
 import {
-  useGetImageMetadataFromFileQuery,
   useStarImagesMutation,
   useUnstarImagesMutation,
 } from 'services/api/endpoints/images';
+import { useDebouncedMetadata } from 'services/api/hooks/useDebouncedMetadata';
+import { useDebouncedWorkflow } from 'services/api/hooks/useDebouncedWorkflow';
 import { ImageDTO } from 'services/api/types';
 import { sentImageToCanvas, sentImageToImg2Img } from '../../store/actions';
-import { workflowLoadRequested } from 'features/nodes/store/actions';
-import { configSelector } from '../../../system/store/configSelectors';
 
 type SingleSelectionMenuItemsProps = {
   imageDTO: ImageDTO;
@@ -49,17 +53,13 @@ const SingleSelectionMenuItems = (props: SingleSelectionMenuItemsProps) => {
   const toaster = useAppToaster();
 
   const isCanvasEnabled = useFeatureStatus('unifiedCanvas').isFeatureEnabled;
-  const { shouldFetchMetadataFromApi } = useAppSelector(configSelector);
+  const customStarUi = useStore($customStarUI);
 
-  const { metadata, workflow, isLoading } = useGetImageMetadataFromFileQuery(
-    { image: imageDTO, shouldFetchMetadataFromApi },
-    {
-      selectFromResult: (res) => ({
-        isLoading: res.isFetching,
-        metadata: res?.currentData?.metadata,
-        workflow: res?.currentData?.workflow,
-      }),
-    }
+  const { metadata, isLoading: isLoadingMetadata } = useDebouncedMetadata(
+    imageDTO?.image_name
+  );
+  const { workflow, isLoading: isLoadingWorkflow } = useDebouncedWorkflow(
+    imageDTO?.workflow_id
   );
 
   const [starImages] = useStarImagesMutation();
@@ -112,8 +112,10 @@ const SingleSelectionMenuItems = (props: SingleSelectionMenuItemsProps) => {
 
   const handleSendToCanvas = useCallback(() => {
     dispatch(sentImageToCanvas());
+    flushSync(() => {
+      dispatch(setActiveTab('unifiedCanvas'));
+    });
     dispatch(setInitialCanvasImage(imageDTO));
-    dispatch(setActiveTab('unifiedCanvas'));
 
     toaster({
       title: t('toast.sentToUnifiedCanvas'),
@@ -174,17 +176,17 @@ const SingleSelectionMenuItems = (props: SingleSelectionMenuItemsProps) => {
         {t('parameters.downloadImage')}
       </MenuItem>
       <MenuItem
-        icon={isLoading ? <SpinnerIcon /> : <MdDeviceHub />}
+        icon={isLoadingWorkflow ? <SpinnerIcon /> : <FaCircleNodes />}
         onClickCapture={handleLoadWorkflow}
-        isDisabled={isLoading || !workflow}
+        isDisabled={isLoadingWorkflow || !workflow}
       >
         {t('nodes.loadWorkflow')}
       </MenuItem>
       <MenuItem
-        icon={isLoading ? <SpinnerIcon /> : <FaQuoteRight />}
+        icon={isLoadingMetadata ? <SpinnerIcon /> : <FaQuoteRight />}
         onClickCapture={handleRecallPrompt}
         isDisabled={
-          isLoading ||
+          isLoadingMetadata ||
           (metadata?.positive_prompt === undefined &&
             metadata?.negative_prompt === undefined)
         }
@@ -192,16 +194,16 @@ const SingleSelectionMenuItems = (props: SingleSelectionMenuItemsProps) => {
         {t('parameters.usePrompt')}
       </MenuItem>
       <MenuItem
-        icon={isLoading ? <SpinnerIcon /> : <FaSeedling />}
+        icon={isLoadingMetadata ? <SpinnerIcon /> : <FaSeedling />}
         onClickCapture={handleRecallSeed}
-        isDisabled={isLoading || metadata?.seed === undefined}
+        isDisabled={isLoadingMetadata || metadata?.seed === undefined}
       >
         {t('parameters.useSeed')}
       </MenuItem>
       <MenuItem
-        icon={isLoading ? <SpinnerIcon /> : <FaAsterisk />}
+        icon={isLoadingMetadata ? <SpinnerIcon /> : <FaAsterisk />}
         onClickCapture={handleUseAllParameters}
-        isDisabled={isLoading || !metadata}
+        isDisabled={isLoadingMetadata || !metadata}
       >
         {t('parameters.useAll')}
       </MenuItem>
@@ -225,12 +227,18 @@ const SingleSelectionMenuItems = (props: SingleSelectionMenuItemsProps) => {
         Change Board
       </MenuItem>
       {imageDTO.starred ? (
-        <MenuItem icon={<MdStar />} onClickCapture={handleUnstarImage}>
-          Unstar Image
+        <MenuItem
+          icon={customStarUi ? customStarUi.off.icon : <MdStar />}
+          onClickCapture={handleUnstarImage}
+        >
+          {customStarUi ? customStarUi.off.text : `Unstar Image`}
         </MenuItem>
       ) : (
-        <MenuItem icon={<MdStarBorder />} onClickCapture={handleStarImage}>
-          Star Image
+        <MenuItem
+          icon={customStarUi ? customStarUi.on.icon : <MdStarBorder />}
+          onClickCapture={handleStarImage}
+        >
+          {customStarUi ? customStarUi.on.text : `Star Image`}
         </MenuItem>
       )}
       <MenuItem

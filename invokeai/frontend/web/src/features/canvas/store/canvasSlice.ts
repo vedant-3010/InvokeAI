@@ -8,7 +8,6 @@ import { setAspectRatio } from 'features/parameters/store/generationSlice';
 import { IRect, Vector2d } from 'konva/lib/types';
 import { clamp, cloneDeep } from 'lodash-es';
 import { RgbaColor } from 'react-colorful';
-import { sessionCanceled } from 'services/api/thunks/session';
 import { ImageDTO } from 'services/api/types';
 import calculateCoordinates from '../util/calculateCoordinates';
 import calculateScale from '../util/calculateScale';
@@ -30,6 +29,8 @@ import {
   isCanvasBaseImage,
   isCanvasMaskLine,
 } from './canvasTypes';
+import { appSocketQueueItemStatusChanged } from 'services/events/actions';
+import { queueApi } from 'services/api/endpoints/queue';
 
 export const initialLayerState: CanvasLayerState = {
   objects: [],
@@ -85,6 +86,7 @@ export const initialCanvasState: CanvasState = {
   stageDimensions: { width: 0, height: 0 },
   stageScale: 1,
   tool: 'brush',
+  batchIds: [],
 };
 
 export const canvasSlice = createSlice({
@@ -186,7 +188,7 @@ export const canvasSlice = createSlice({
       state.pastLayerStates.push(cloneDeep(state.layerState));
 
       state.layerState = {
-        ...initialLayerState,
+        ...cloneDeep(initialLayerState),
         objects: [
           {
             kind: 'image',
@@ -200,6 +202,7 @@ export const canvasSlice = createSlice({
         ],
       };
       state.futureLayerStates = [];
+      state.batchIds = [];
 
       const newScale = calculateScale(
         stageDimensions.width,
@@ -297,18 +300,22 @@ export const canvasSlice = createSlice({
     setIsMoveStageKeyHeld: (state, action: PayloadAction<boolean>) => {
       state.isMoveStageKeyHeld = action.payload;
     },
-    canvasSessionIdChanged: (state, action: PayloadAction<string>) => {
-      state.layerState.stagingArea.sessionId = action.payload;
+    canvasBatchIdAdded: (state, action: PayloadAction<string>) => {
+      state.batchIds.push(action.payload);
+    },
+    canvasBatchIdsReset: (state) => {
+      state.batchIds = [];
     },
     stagingAreaInitialized: (
       state,
-      action: PayloadAction<{ sessionId: string; boundingBox: IRect }>
+      action: PayloadAction<{
+        boundingBox: IRect;
+      }>
     ) => {
-      const { sessionId, boundingBox } = action.payload;
+      const { boundingBox } = action.payload;
 
       state.layerState.stagingArea = {
         boundingBox,
-        sessionId,
         images: [],
         selectedImageIndex: -1,
       };
@@ -345,11 +352,14 @@ export const canvasSlice = createSlice({
         state.pastLayerStates.shift();
       }
 
-      state.layerState.stagingArea = { ...initialLayerState.stagingArea };
+      state.layerState.stagingArea = cloneDeep(
+        cloneDeep(initialLayerState)
+      ).stagingArea;
 
       state.futureLayerStates = [];
       state.shouldShowStagingOutline = true;
-      state.shouldShowStagingOutline = true;
+      state.shouldShowStagingImage = true;
+      state.batchIds = [];
     },
     addFillRect: (state) => {
       const { boundingBoxCoordinates, boundingBoxDimensions, brushColor } =
@@ -486,8 +496,9 @@ export const canvasSlice = createSlice({
     resetCanvas: (state) => {
       state.pastLayerStates.push(cloneDeep(state.layerState));
 
-      state.layerState = initialLayerState;
+      state.layerState = cloneDeep(initialLayerState);
       state.futureLayerStates = [];
+      state.batchIds = [];
     },
     canvasResized: (
       state,
@@ -612,30 +623,24 @@ export const canvasSlice = createSlice({
         return;
       }
 
-      const currentIndex = state.layerState.stagingArea.selectedImageIndex;
-      const length = state.layerState.stagingArea.images.length;
+      const nextIndex = state.layerState.stagingArea.selectedImageIndex + 1;
+      const lastIndex = state.layerState.stagingArea.images.length - 1;
 
-      state.layerState.stagingArea.selectedImageIndex = Math.min(
-        currentIndex + 1,
-        length - 1
-      );
+      state.layerState.stagingArea.selectedImageIndex =
+        nextIndex > lastIndex ? 0 : nextIndex;
     },
     prevStagingAreaImage: (state) => {
       if (!state.layerState.stagingArea.images.length) {
         return;
       }
 
-      const currentIndex = state.layerState.stagingArea.selectedImageIndex;
+      const prevIndex = state.layerState.stagingArea.selectedImageIndex - 1;
+      const lastIndex = state.layerState.stagingArea.images.length - 1;
 
-      state.layerState.stagingArea.selectedImageIndex = Math.max(
-        currentIndex - 1,
-        0
-      );
+      state.layerState.stagingArea.selectedImageIndex =
+        prevIndex < 0 ? lastIndex : prevIndex;
     },
-    commitStagingAreaImage: (
-      state,
-      _action: PayloadAction<string | undefined>
-    ) => {
+    commitStagingAreaImage: (state) => {
       if (!state.layerState.stagingArea.images.length) {
         return;
       }
@@ -655,13 +660,12 @@ export const canvasSlice = createSlice({
           ...imageToCommit,
         });
       }
-      state.layerState.stagingArea = {
-        ...initialLayerState.stagingArea,
-      };
+      state.layerState.stagingArea = cloneDeep(initialLayerState).stagingArea;
 
       state.futureLayerStates = [];
       state.shouldShowStagingOutline = true;
       state.shouldShowStagingImage = true;
+      state.batchIds = [];
     },
     fitBoundingBoxToStage: (state) => {
       const {
@@ -784,9 +788,16 @@ export const canvasSlice = createSlice({
     },
   },
   extraReducers: (builder) => {
-    builder.addCase(sessionCanceled.pending, (state) => {
-      if (!state.layerState.stagingArea.images.length) {
-        state.layerState.stagingArea = initialLayerState.stagingArea;
+    builder.addCase(appSocketQueueItemStatusChanged, (state, action) => {
+      const batch_status = action.payload.data.batch_status;
+      if (!state.batchIds.includes(batch_status.batch_id)) {
+        return;
+      }
+
+      if (batch_status.in_progress === 0 && batch_status.pending === 0) {
+        state.batchIds = state.batchIds.filter(
+          (id) => id !== batch_status.batch_id
+        );
       }
     });
     builder.addCase(setAspectRatio, (state, action) => {
@@ -802,6 +813,20 @@ export const canvasSlice = createSlice({
         );
       }
     });
+    builder.addMatcher(
+      queueApi.endpoints.clearQueue.matchFulfilled,
+      (state) => {
+        state.batchIds = [];
+      }
+    );
+    builder.addMatcher(
+      queueApi.endpoints.cancelByBatchIds.matchFulfilled,
+      (state, action) => {
+        state.batchIds = state.batchIds.filter(
+          (id) => !action.meta.arg.originalArgs.batch_ids.includes(id)
+        );
+      }
+    );
   },
 });
 
@@ -869,9 +894,10 @@ export const {
   setScaledBoundingBoxDimensions,
   setShouldRestrictStrokesToBox,
   stagingAreaInitialized,
-  canvasSessionIdChanged,
   setShouldAntialias,
   canvasResized,
+  canvasBatchIdAdded,
+  canvasBatchIdsReset,
 } = canvasSlice.actions;
 
 export default canvasSlice.reducer;

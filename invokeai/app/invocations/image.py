@@ -7,13 +7,21 @@ import cv2
 import numpy
 from PIL import Image, ImageChops, ImageFilter, ImageOps
 
-from invokeai.app.invocations.metadata import CoreMetadata
-from invokeai.app.invocations.primitives import ColorField, ImageField, ImageOutput
+from invokeai.app.invocations.primitives import BoardField, ColorField, ImageField, ImageOutput
+from invokeai.app.services.image_records.image_records_common import ImageCategory, ResourceOrigin
 from invokeai.backend.image_util.invisible_watermark import InvisibleWatermark
 from invokeai.backend.image_util.safety_checker import SafetyChecker
 
-from ..models.image import ImageCategory, ResourceOrigin
-from .baseinvocation import BaseInvocation, FieldDescriptions, InputField, InvocationContext, invocation
+from .baseinvocation import (
+    BaseInvocation,
+    FieldDescriptions,
+    Input,
+    InputField,
+    InvocationContext,
+    WithMetadata,
+    WithWorkflow,
+    invocation,
+)
 
 
 @invocation("show_image", title="Show Image", tags=["image"], category="image", version="1.0.0")
@@ -37,7 +45,7 @@ class ShowImageInvocation(BaseInvocation):
 
 
 @invocation("blank_image", title="Blank Image", tags=["image"], category="image", version="1.0.0")
-class BlankImageInvocation(BaseInvocation):
+class BlankImageInvocation(BaseInvocation, WithMetadata, WithWorkflow):
     """Creates a blank image and forwards it to the pipeline"""
 
     width: int = InputField(default=512, description="The width of the image")
@@ -55,6 +63,7 @@ class BlankImageInvocation(BaseInvocation):
             node_id=self.id,
             session_id=context.graph_execution_state_id,
             is_intermediate=self.is_intermediate,
+            metadata=self.metadata,
             workflow=self.workflow,
         )
 
@@ -66,7 +75,7 @@ class BlankImageInvocation(BaseInvocation):
 
 
 @invocation("img_crop", title="Crop Image", tags=["image", "crop"], category="image", version="1.0.0")
-class ImageCropInvocation(BaseInvocation):
+class ImageCropInvocation(BaseInvocation, WithWorkflow, WithMetadata):
     """Crops an image to a specified box. The box can be outside of the image."""
 
     image: ImageField = InputField(description="The image to crop")
@@ -88,6 +97,7 @@ class ImageCropInvocation(BaseInvocation):
             node_id=self.id,
             session_id=context.graph_execution_state_id,
             is_intermediate=self.is_intermediate,
+            metadata=self.metadata,
             workflow=self.workflow,
         )
 
@@ -98,8 +108,8 @@ class ImageCropInvocation(BaseInvocation):
         )
 
 
-@invocation("img_paste", title="Paste Image", tags=["image", "paste"], category="image", version="1.0.0")
-class ImagePasteInvocation(BaseInvocation):
+@invocation("img_paste", title="Paste Image", tags=["image", "paste"], category="image", version="1.0.1")
+class ImagePasteInvocation(BaseInvocation, WithWorkflow, WithMetadata):
     """Pastes an image into another image."""
 
     base_image: ImageField = InputField(description="The base image")
@@ -110,6 +120,7 @@ class ImagePasteInvocation(BaseInvocation):
     )
     x: int = InputField(default=0, description="The left x coordinate at which to paste the image")
     y: int = InputField(default=0, description="The top y coordinate at which to paste the image")
+    crop: bool = InputField(default=False, description="Crop to base image dimensions")
 
     def invoke(self, context: InvocationContext) -> ImageOutput:
         base_image = context.services.images.get_pil_image(self.base_image.image_name)
@@ -129,6 +140,10 @@ class ImagePasteInvocation(BaseInvocation):
         new_image.paste(base_image, (abs(min_x), abs(min_y)))
         new_image.paste(image, (max(0, self.x), max(0, self.y)), mask=mask)
 
+        if self.crop:
+            base_w, base_h = base_image.size
+            new_image = new_image.crop((abs(min_x), abs(min_y), abs(min_x) + base_w, abs(min_y) + base_h))
+
         image_dto = context.services.images.create(
             image=new_image,
             image_origin=ResourceOrigin.INTERNAL,
@@ -136,6 +151,7 @@ class ImagePasteInvocation(BaseInvocation):
             node_id=self.id,
             session_id=context.graph_execution_state_id,
             is_intermediate=self.is_intermediate,
+            metadata=self.metadata,
             workflow=self.workflow,
         )
 
@@ -147,7 +163,7 @@ class ImagePasteInvocation(BaseInvocation):
 
 
 @invocation("tomask", title="Mask from Alpha", tags=["image", "mask"], category="image", version="1.0.0")
-class MaskFromAlphaInvocation(BaseInvocation):
+class MaskFromAlphaInvocation(BaseInvocation, WithWorkflow, WithMetadata):
     """Extracts the alpha channel of an image as a mask."""
 
     image: ImageField = InputField(description="The image to create the mask from")
@@ -167,6 +183,7 @@ class MaskFromAlphaInvocation(BaseInvocation):
             node_id=self.id,
             session_id=context.graph_execution_state_id,
             is_intermediate=self.is_intermediate,
+            metadata=self.metadata,
             workflow=self.workflow,
         )
 
@@ -178,7 +195,7 @@ class MaskFromAlphaInvocation(BaseInvocation):
 
 
 @invocation("img_mul", title="Multiply Images", tags=["image", "multiply"], category="image", version="1.0.0")
-class ImageMultiplyInvocation(BaseInvocation):
+class ImageMultiplyInvocation(BaseInvocation, WithWorkflow, WithMetadata):
     """Multiplies two images together using `PIL.ImageChops.multiply()`."""
 
     image1: ImageField = InputField(description="The first image to multiply")
@@ -197,6 +214,7 @@ class ImageMultiplyInvocation(BaseInvocation):
             node_id=self.id,
             session_id=context.graph_execution_state_id,
             is_intermediate=self.is_intermediate,
+            metadata=self.metadata,
             workflow=self.workflow,
         )
 
@@ -211,7 +229,7 @@ IMAGE_CHANNELS = Literal["A", "R", "G", "B"]
 
 
 @invocation("img_chan", title="Extract Image Channel", tags=["image", "channel"], category="image", version="1.0.0")
-class ImageChannelInvocation(BaseInvocation):
+class ImageChannelInvocation(BaseInvocation, WithWorkflow, WithMetadata):
     """Gets a channel from an image."""
 
     image: ImageField = InputField(description="The image to get the channel from")
@@ -229,6 +247,7 @@ class ImageChannelInvocation(BaseInvocation):
             node_id=self.id,
             session_id=context.graph_execution_state_id,
             is_intermediate=self.is_intermediate,
+            metadata=self.metadata,
             workflow=self.workflow,
         )
 
@@ -243,7 +262,7 @@ IMAGE_MODES = Literal["L", "RGB", "RGBA", "CMYK", "YCbCr", "LAB", "HSV", "I", "F
 
 
 @invocation("img_conv", title="Convert Image Mode", tags=["image", "convert"], category="image", version="1.0.0")
-class ImageConvertInvocation(BaseInvocation):
+class ImageConvertInvocation(BaseInvocation, WithWorkflow, WithMetadata):
     """Converts an image to a different mode."""
 
     image: ImageField = InputField(description="The image to convert")
@@ -261,6 +280,7 @@ class ImageConvertInvocation(BaseInvocation):
             node_id=self.id,
             session_id=context.graph_execution_state_id,
             is_intermediate=self.is_intermediate,
+            metadata=self.metadata,
             workflow=self.workflow,
         )
 
@@ -272,7 +292,7 @@ class ImageConvertInvocation(BaseInvocation):
 
 
 @invocation("img_blur", title="Blur Image", tags=["image", "blur"], category="image", version="1.0.0")
-class ImageBlurInvocation(BaseInvocation):
+class ImageBlurInvocation(BaseInvocation, WithWorkflow, WithMetadata):
     """Blurs an image"""
 
     image: ImageField = InputField(description="The image to blur")
@@ -295,6 +315,7 @@ class ImageBlurInvocation(BaseInvocation):
             node_id=self.id,
             session_id=context.graph_execution_state_id,
             is_intermediate=self.is_intermediate,
+            metadata=self.metadata,
             workflow=self.workflow,
         )
 
@@ -326,16 +347,13 @@ PIL_RESAMPLING_MAP = {
 
 
 @invocation("img_resize", title="Resize Image", tags=["image", "resize"], category="image", version="1.0.0")
-class ImageResizeInvocation(BaseInvocation):
+class ImageResizeInvocation(BaseInvocation, WithMetadata, WithWorkflow):
     """Resizes an image to specific dimensions"""
 
     image: ImageField = InputField(description="The image to resize")
-    width: int = InputField(default=512, ge=64, multiple_of=8, description="The width to resize to (px)")
-    height: int = InputField(default=512, ge=64, multiple_of=8, description="The height to resize to (px)")
+    width: int = InputField(default=512, gt=0, description="The width to resize to (px)")
+    height: int = InputField(default=512, gt=0, description="The height to resize to (px)")
     resample_mode: PIL_RESAMPLING_MODES = InputField(default="bicubic", description="The resampling mode")
-    metadata: Optional[CoreMetadata] = InputField(
-        default=None, description=FieldDescriptions.core_metadata, ui_hidden=True
-    )
 
     def invoke(self, context: InvocationContext) -> ImageOutput:
         image = context.services.images.get_pil_image(self.image.image_name)
@@ -354,7 +372,7 @@ class ImageResizeInvocation(BaseInvocation):
             node_id=self.id,
             session_id=context.graph_execution_state_id,
             is_intermediate=self.is_intermediate,
-            metadata=self.metadata.dict() if self.metadata else None,
+            metadata=self.metadata,
             workflow=self.workflow,
         )
 
@@ -366,7 +384,7 @@ class ImageResizeInvocation(BaseInvocation):
 
 
 @invocation("img_scale", title="Scale Image", tags=["image", "scale"], category="image", version="1.0.0")
-class ImageScaleInvocation(BaseInvocation):
+class ImageScaleInvocation(BaseInvocation, WithMetadata, WithWorkflow):
     """Scales an image by a factor"""
 
     image: ImageField = InputField(description="The image to scale")
@@ -396,6 +414,7 @@ class ImageScaleInvocation(BaseInvocation):
             node_id=self.id,
             session_id=context.graph_execution_state_id,
             is_intermediate=self.is_intermediate,
+            metadata=self.metadata,
             workflow=self.workflow,
         )
 
@@ -407,7 +426,7 @@ class ImageScaleInvocation(BaseInvocation):
 
 
 @invocation("img_lerp", title="Lerp Image", tags=["image", "lerp"], category="image", version="1.0.0")
-class ImageLerpInvocation(BaseInvocation):
+class ImageLerpInvocation(BaseInvocation, WithWorkflow, WithMetadata):
     """Linear interpolation of all pixels of an image"""
 
     image: ImageField = InputField(description="The image to lerp")
@@ -429,6 +448,7 @@ class ImageLerpInvocation(BaseInvocation):
             node_id=self.id,
             session_id=context.graph_execution_state_id,
             is_intermediate=self.is_intermediate,
+            metadata=self.metadata,
             workflow=self.workflow,
         )
 
@@ -440,7 +460,7 @@ class ImageLerpInvocation(BaseInvocation):
 
 
 @invocation("img_ilerp", title="Inverse Lerp Image", tags=["image", "ilerp"], category="image", version="1.0.0")
-class ImageInverseLerpInvocation(BaseInvocation):
+class ImageInverseLerpInvocation(BaseInvocation, WithWorkflow, WithMetadata):
     """Inverse linear interpolation of all pixels of an image"""
 
     image: ImageField = InputField(description="The image to lerp")
@@ -451,7 +471,7 @@ class ImageInverseLerpInvocation(BaseInvocation):
         image = context.services.images.get_pil_image(self.image.image_name)
 
         image_arr = numpy.asarray(image, dtype=numpy.float32)
-        image_arr = numpy.minimum(numpy.maximum(image_arr - self.min, 0) / float(self.max - self.min), 1) * 255
+        image_arr = numpy.minimum(numpy.maximum(image_arr - self.min, 0) / float(self.max - self.min), 1) * 255  # type: ignore [assignment]
 
         ilerp_image = Image.fromarray(numpy.uint8(image_arr))
 
@@ -462,6 +482,7 @@ class ImageInverseLerpInvocation(BaseInvocation):
             node_id=self.id,
             session_id=context.graph_execution_state_id,
             is_intermediate=self.is_intermediate,
+            metadata=self.metadata,
             workflow=self.workflow,
         )
 
@@ -473,13 +494,10 @@ class ImageInverseLerpInvocation(BaseInvocation):
 
 
 @invocation("img_nsfw", title="Blur NSFW Image", tags=["image", "nsfw"], category="image", version="1.0.0")
-class ImageNSFWBlurInvocation(BaseInvocation):
+class ImageNSFWBlurInvocation(BaseInvocation, WithMetadata, WithWorkflow):
     """Add blur to NSFW-flagged images"""
 
     image: ImageField = InputField(description="The image to check")
-    metadata: Optional[CoreMetadata] = InputField(
-        default=None, description=FieldDescriptions.core_metadata, ui_hidden=True
-    )
 
     def invoke(self, context: InvocationContext) -> ImageOutput:
         image = context.services.images.get_pil_image(self.image.image_name)
@@ -500,7 +518,7 @@ class ImageNSFWBlurInvocation(BaseInvocation):
             node_id=self.id,
             session_id=context.graph_execution_state_id,
             is_intermediate=self.is_intermediate,
-            metadata=self.metadata.dict() if self.metadata else None,
+            metadata=self.metadata,
             workflow=self.workflow,
         )
 
@@ -510,7 +528,7 @@ class ImageNSFWBlurInvocation(BaseInvocation):
             height=image_dto.height,
         )
 
-    def _get_caution_img(self) -> Image:
+    def _get_caution_img(self) -> Image.Image:
         import invokeai.app.assets.images as image_assets
 
         caution = Image.open(Path(image_assets.__path__[0]) / "caution.png")
@@ -518,16 +536,17 @@ class ImageNSFWBlurInvocation(BaseInvocation):
 
 
 @invocation(
-    "img_watermark", title="Add Invisible Watermark", tags=["image", "watermark"], category="image", version="1.0.0"
+    "img_watermark",
+    title="Add Invisible Watermark",
+    tags=["image", "watermark"],
+    category="image",
+    version="1.0.0",
 )
-class ImageWatermarkInvocation(BaseInvocation):
+class ImageWatermarkInvocation(BaseInvocation, WithMetadata, WithWorkflow):
     """Add an invisible watermark to an image"""
 
     image: ImageField = InputField(description="The image to check")
     text: str = InputField(default="InvokeAI", description="Watermark text")
-    metadata: Optional[CoreMetadata] = InputField(
-        default=None, description=FieldDescriptions.core_metadata, ui_hidden=True
-    )
 
     def invoke(self, context: InvocationContext) -> ImageOutput:
         image = context.services.images.get_pil_image(self.image.image_name)
@@ -539,7 +558,7 @@ class ImageWatermarkInvocation(BaseInvocation):
             node_id=self.id,
             session_id=context.graph_execution_state_id,
             is_intermediate=self.is_intermediate,
-            metadata=self.metadata.dict() if self.metadata else None,
+            metadata=self.metadata,
             workflow=self.workflow,
         )
 
@@ -551,7 +570,7 @@ class ImageWatermarkInvocation(BaseInvocation):
 
 
 @invocation("mask_edge", title="Mask Edge", tags=["image", "mask", "inpaint"], category="image", version="1.0.0")
-class MaskEdgeInvocation(BaseInvocation):
+class MaskEdgeInvocation(BaseInvocation, WithWorkflow, WithMetadata):
     """Applies an edge mask to an image"""
 
     image: ImageField = InputField(description="The image to apply the mask to")
@@ -585,6 +604,7 @@ class MaskEdgeInvocation(BaseInvocation):
             node_id=self.id,
             session_id=context.graph_execution_state_id,
             is_intermediate=self.is_intermediate,
+            metadata=self.metadata,
             workflow=self.workflow,
         )
 
@@ -596,9 +616,13 @@ class MaskEdgeInvocation(BaseInvocation):
 
 
 @invocation(
-    "mask_combine", title="Combine Masks", tags=["image", "mask", "multiply"], category="image", version="1.0.0"
+    "mask_combine",
+    title="Combine Masks",
+    tags=["image", "mask", "multiply"],
+    category="image",
+    version="1.0.0",
 )
-class MaskCombineInvocation(BaseInvocation):
+class MaskCombineInvocation(BaseInvocation, WithWorkflow, WithMetadata):
     """Combine two masks together by multiplying them using `PIL.ImageChops.multiply()`."""
 
     mask1: ImageField = InputField(description="The first mask to combine")
@@ -617,6 +641,7 @@ class MaskCombineInvocation(BaseInvocation):
             node_id=self.id,
             session_id=context.graph_execution_state_id,
             is_intermediate=self.is_intermediate,
+            metadata=self.metadata,
             workflow=self.workflow,
         )
 
@@ -628,7 +653,7 @@ class MaskCombineInvocation(BaseInvocation):
 
 
 @invocation("color_correct", title="Color Correct", tags=["image", "color"], category="image", version="1.0.0")
-class ColorCorrectInvocation(BaseInvocation):
+class ColorCorrectInvocation(BaseInvocation, WithWorkflow, WithMetadata):
     """
     Shifts the colors of a target image to match the reference image, optionally
     using a mask to only color-correct certain regions of the target image.
@@ -727,6 +752,7 @@ class ColorCorrectInvocation(BaseInvocation):
             node_id=self.id,
             session_id=context.graph_execution_state_id,
             is_intermediate=self.is_intermediate,
+            metadata=self.metadata,
             workflow=self.workflow,
         )
 
@@ -738,7 +764,7 @@ class ColorCorrectInvocation(BaseInvocation):
 
 
 @invocation("img_hue_adjust", title="Adjust Image Hue", tags=["image", "hue"], category="image", version="1.0.0")
-class ImageHueAdjustmentInvocation(BaseInvocation):
+class ImageHueAdjustmentInvocation(BaseInvocation, WithWorkflow, WithMetadata):
     """Adjusts the Hue of an image."""
 
     image: ImageField = InputField(description="The image to adjust")
@@ -766,6 +792,7 @@ class ImageHueAdjustmentInvocation(BaseInvocation):
             node_id=self.id,
             is_intermediate=self.is_intermediate,
             session_id=context.graph_execution_state_id,
+            metadata=self.metadata,
             workflow=self.workflow,
         )
 
@@ -841,7 +868,7 @@ CHANNEL_FORMATS = {
     category="image",
     version="1.0.0",
 )
-class ImageChannelOffsetInvocation(BaseInvocation):
+class ImageChannelOffsetInvocation(BaseInvocation, WithWorkflow, WithMetadata):
     """Add or subtract a value from a specific color channel of an image."""
 
     image: ImageField = InputField(description="The image to adjust")
@@ -875,6 +902,7 @@ class ImageChannelOffsetInvocation(BaseInvocation):
             node_id=self.id,
             is_intermediate=self.is_intermediate,
             session_id=context.graph_execution_state_id,
+            metadata=self.metadata,
             workflow=self.workflow,
         )
 
@@ -911,7 +939,7 @@ class ImageChannelOffsetInvocation(BaseInvocation):
     category="image",
     version="1.0.0",
 )
-class ImageChannelMultiplyInvocation(BaseInvocation):
+class ImageChannelMultiplyInvocation(BaseInvocation, WithWorkflow, WithMetadata):
     """Scale a specific color channel of an image."""
 
     image: ImageField = InputField(description="The image to adjust")
@@ -951,12 +979,49 @@ class ImageChannelMultiplyInvocation(BaseInvocation):
             is_intermediate=self.is_intermediate,
             session_id=context.graph_execution_state_id,
             workflow=self.workflow,
+            metadata=self.metadata,
         )
 
         return ImageOutput(
             image=ImageField(
                 image_name=image_dto.image_name,
             ),
+            width=image_dto.width,
+            height=image_dto.height,
+        )
+
+
+@invocation(
+    "save_image",
+    title="Save Image",
+    tags=["primitives", "image"],
+    category="primitives",
+    version="1.0.1",
+    use_cache=False,
+)
+class SaveImageInvocation(BaseInvocation, WithWorkflow, WithMetadata):
+    """Saves an image. Unlike an image primitive, this invocation stores a copy of the image."""
+
+    image: ImageField = InputField(description=FieldDescriptions.image)
+    board: BoardField = InputField(default=None, description=FieldDescriptions.board, input=Input.Direct)
+
+    def invoke(self, context: InvocationContext) -> ImageOutput:
+        image = context.services.images.get_pil_image(self.image.image_name)
+
+        image_dto = context.services.images.create(
+            image=image,
+            image_origin=ResourceOrigin.INTERNAL,
+            image_category=ImageCategory.GENERAL,
+            board_id=self.board.board_id if self.board else None,
+            node_id=self.id,
+            session_id=context.graph_execution_state_id,
+            is_intermediate=self.is_intermediate,
+            metadata=self.metadata,
+            workflow=self.workflow,
+        )
+
+        return ImageOutput(
+            image=ImageField(image_name=image_dto.image_name),
             width=image_dto.width,
             height=image_dto.height,
         )

@@ -1,8 +1,11 @@
-import { InputFieldTemplate, InputFieldValue } from '../types/types';
+import { FieldType, InputFieldTemplate, InputFieldValue } from '../types/types';
 
-const FIELD_VALUE_FALLBACK_MAP = {
-  'enum.number': 0,
-  'enum.string': '',
+const FIELD_VALUE_FALLBACK_MAP: {
+  [key in FieldType]: InputFieldValue['value'];
+} = {
+  Any: undefined,
+  enum: '',
+  BoardField: undefined,
   boolean: false,
   BooleanCollection: [],
   BooleanPolymorphic: false,
@@ -29,9 +32,18 @@ const FIELD_VALUE_FALLBACK_MAP = {
   integer: 0,
   IntegerCollection: [],
   IntegerPolymorphic: 0,
+  IPAdapterCollection: [],
+  IPAdapterField: undefined,
+  IPAdapterModelField: undefined,
+  IPAdapterPolymorphic: undefined,
   LatentsCollection: [],
   LatentsField: undefined,
   LatentsPolymorphic: undefined,
+  MetadataItemField: undefined,
+  MetadataItemCollection: [],
+  MetadataItemPolymorphic: undefined,
+  MetadataField: undefined,
+  MetadataCollection: [],
   LoRAModelField: undefined,
   MainModelField: undefined,
   ONNXModelField: undefined,
@@ -41,6 +53,10 @@ const FIELD_VALUE_FALLBACK_MAP = {
   string: '',
   StringCollection: [],
   StringPolymorphic: '',
+  T2IAdapterCollection: [],
+  T2IAdapterField: undefined,
+  T2IAdapterModelField: undefined,
+  T2IAdapterPolymorphic: undefined,
   UNetField: undefined,
   VaeField: undefined,
   VaeModelField: undefined,
@@ -62,19 +78,8 @@ export const buildInputFieldValue = (
     fieldKind: 'input',
   } as InputFieldValue;
 
-  if (template.type === 'enum') {
-    if (template.enumType === 'number') {
-      fieldValue.value =
-        template.default ?? FIELD_VALUE_FALLBACK_MAP['enum.number'];
-    }
-    if (template.enumType === 'string') {
-      fieldValue.value =
-        template.default ?? FIELD_VALUE_FALLBACK_MAP['enum.string'];
-    }
-  } else {
-    fieldValue.value =
-      template.default ?? FIELD_VALUE_FALLBACK_MAP[template.type];
-  }
+  fieldValue.value =
+    template.default ?? FIELD_VALUE_FALLBACK_MAP[template.type];
 
   return fieldValue;
 };

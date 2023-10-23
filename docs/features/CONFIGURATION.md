@@ -82,7 +82,7 @@ format of YAML files can be found
 [here](https://circleci.com/blog/what-is-yaml-a-beginner-s-guide/).
 
 You can fix a broken `invokeai.yaml` by deleting it and running the
-configuration script again -- option [7] in the launcher, "Re-run the
+configuration script again -- option [6] in the launcher, "Re-run the
 configure script".
 
 #### Reading Environment Variables
@@ -159,7 +159,7 @@ groups in `invokeia.yaml`:
 | `host`     | `localhost`      | Name or IP address of the network interface that the web server will listen on  |
 | `port`     | `9090`           | Network port number that the web server will listen on  |
 | `allow_origins`  | `[]`       | A list of host names or IP addresses that are allowed to connect to the InvokeAI API in the format `['host1','host2',...]` |
-| `allow_credentials | `true`   | Require credentials for a foreign host to access the InvokeAI API (don't change this) |
+| `allow_credentials` | `true`   | Require credentials for a foreign host to access the InvokeAI API (don't change this) |
 | `allow_methods` | `*`         | List of HTTP methods ("GET", "POST") that the web server is allowed to use when accessing the API  |
 | `allow_headers` | `*`         | List of HTTP headers that the web server will accept when accessing the API  |
 

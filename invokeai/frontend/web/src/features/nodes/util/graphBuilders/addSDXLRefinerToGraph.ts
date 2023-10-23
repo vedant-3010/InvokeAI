@@ -2,7 +2,6 @@ import { RootState } from 'app/store/store';
 import {
   CreateDenoiseMaskInvocation,
   ImageDTO,
-  MetadataAccumulatorInvocation,
   SeamlessModeInvocation,
 } from 'services/api/types';
 import { NonNullableGraph } from '../../types/types';
@@ -12,7 +11,6 @@ import {
   LATENTS_TO_IMAGE,
   MASK_COMBINE,
   MASK_RESIZE_UP,
-  METADATA_ACCUMULATOR,
   SDXL_CANVAS_IMAGE_TO_IMAGE_GRAPH,
   SDXL_CANVAS_INPAINT_GRAPH,
   SDXL_CANVAS_OUTPAINT_GRAPH,
@@ -25,14 +23,16 @@ import {
   SDXL_REFINER_POSITIVE_CONDITIONING,
   SDXL_REFINER_SEAMLESS,
 } from './constants';
-import { craftSDXLStylePrompt } from './helpers/craftSDXLStylePrompt';
+import { buildSDXLStylePrompts } from './helpers/craftSDXLStylePrompt';
+import { upsertMetadata } from './metadata';
 
 export const addSDXLRefinerToGraph = (
   state: RootState,
   graph: NonNullableGraph,
   baseNodeId: string,
   modelLoaderNodeId?: string,
-  canvasInitImage?: ImageDTO
+  canvasInitImage?: ImageDTO,
+  canvasMaskImage?: ImageDTO
 ): void => {
   const {
     refinerModel,
@@ -57,29 +57,23 @@ export const addSDXLRefinerToGraph = (
     return;
   }
 
-  const metadataAccumulator = graph.nodes[METADATA_ACCUMULATOR] as
-    | MetadataAccumulatorInvocation
-    | undefined;
-
-  if (metadataAccumulator) {
-    metadataAccumulator.refiner_model = refinerModel;
-    metadataAccumulator.refiner_positive_aesthetic_score =
-      refinerPositiveAestheticScore;
-    metadataAccumulator.refiner_negative_aesthetic_score =
-      refinerNegativeAestheticScore;
-    metadataAccumulator.refiner_cfg_scale = refinerCFGScale;
-    metadataAccumulator.refiner_scheduler = refinerScheduler;
-    metadataAccumulator.refiner_start = refinerStart;
-    metadataAccumulator.refiner_steps = refinerSteps;
-  }
+  upsertMetadata(graph, {
+    refiner_model: refinerModel,
+    refiner_positive_aesthetic_score: refinerPositiveAestheticScore,
+    refiner_negative_aesthetic_score: refinerNegativeAestheticScore,
+    refiner_cfg_scale: refinerCFGScale,
+    refiner_scheduler: refinerScheduler,
+    refiner_start: refinerStart,
+    refiner_steps: refinerSteps,
+  });
 
   const modelLoaderId = modelLoaderNodeId
     ? modelLoaderNodeId
     : SDXL_MODEL_LOADER;
 
   // Construct Style Prompt
-  const { craftedPositiveStylePrompt, craftedNegativeStylePrompt } =
-    craftSDXLStylePrompt(state, true);
+  const { joinedPositiveStylePrompt, joinedNegativeStylePrompt } =
+    buildSDXLStylePrompts(state, true);
 
   // Unplug SDXL Latents Generation To Latents To Image
   graph.edges = graph.edges.filter(
@@ -100,13 +94,13 @@ export const addSDXLRefinerToGraph = (
   graph.nodes[SDXL_REFINER_POSITIVE_CONDITIONING] = {
     type: 'sdxl_refiner_compel_prompt',
     id: SDXL_REFINER_POSITIVE_CONDITIONING,
-    style: craftedPositiveStylePrompt,
+    style: joinedPositiveStylePrompt,
     aesthetic_score: refinerPositiveAestheticScore,
   };
   graph.nodes[SDXL_REFINER_NEGATIVE_CONDITIONING] = {
     type: 'sdxl_refiner_compel_prompt',
     id: SDXL_REFINER_NEGATIVE_CONDITIONING,
-    style: craftedNegativeStylePrompt,
+    style: joinedNegativeStylePrompt,
     aesthetic_score: refinerNegativeAestheticScore,
   };
   graph.nodes[SDXL_REFINER_DENOISE_LATENTS] = {
@@ -257,8 +251,30 @@ export const addSDXLRefinerToGraph = (
       };
     }
 
-    graph.edges.push(
-      {
+    if (graph.id === SDXL_CANVAS_INPAINT_GRAPH) {
+      if (isUsingScaledDimensions) {
+        graph.edges.push({
+          source: {
+            node_id: MASK_RESIZE_UP,
+            field: 'image',
+          },
+          destination: {
+            node_id: SDXL_REFINER_INPAINT_CREATE_MASK,
+            field: 'mask',
+          },
+        });
+      } else {
+        graph.nodes[SDXL_REFINER_INPAINT_CREATE_MASK] = {
+          ...(graph.nodes[
+            SDXL_REFINER_INPAINT_CREATE_MASK
+          ] as CreateDenoiseMaskInvocation),
+          mask: canvasMaskImage,
+        };
+      }
+    }
+
+    if (graph.id === SDXL_CANVAS_OUTPAINT_GRAPH) {
+      graph.edges.push({
         source: {
           node_id: isUsingScaledDimensions ? MASK_RESIZE_UP : MASK_COMBINE,
           field: 'image',
@@ -267,18 +283,19 @@ export const addSDXLRefinerToGraph = (
           node_id: SDXL_REFINER_INPAINT_CREATE_MASK,
           field: 'mask',
         },
+      });
+    }
+
+    graph.edges.push({
+      source: {
+        node_id: SDXL_REFINER_INPAINT_CREATE_MASK,
+        field: 'denoise_mask',
       },
-      {
-        source: {
-          node_id: SDXL_REFINER_INPAINT_CREATE_MASK,
-          field: 'denoise_mask',
-        },
-        destination: {
-          node_id: SDXL_REFINER_DENOISE_LATENTS,
-          field: 'denoise_mask',
-        },
-      }
-    );
+      destination: {
+        node_id: SDXL_REFINER_DENOISE_LATENTS,
+        field: 'denoise_mask',
+      },
+    });
   }
 
   if (

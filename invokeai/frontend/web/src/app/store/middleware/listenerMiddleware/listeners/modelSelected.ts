@@ -1,6 +1,9 @@
 import { logger } from 'app/logging/logger';
 import { setBoundingBoxDimensions } from 'features/canvas/store/canvasSlice';
-import { controlNetRemoved } from 'features/controlNet/store/controlNetSlice';
+import {
+  controlAdapterIsEnabledChanged,
+  selectControlAdapterAll,
+} from 'features/controlAdapters/store/controlAdaptersSlice';
 import { loraRemoved } from 'features/lora/store/loraSlice';
 import { modelSelected } from 'features/parameters/store/actions';
 import {
@@ -12,6 +15,7 @@ import {
 import { zMainOrOnnxModel } from 'features/parameters/types/parameterSchemas';
 import { addToast } from 'features/system/store/systemSlice';
 import { makeToast } from 'features/system/util/makeToast';
+import { t } from 'i18next';
 import { forEach } from 'lodash-es';
 import { startAppListening } from '..';
 
@@ -55,10 +59,12 @@ export const addModelSelectedListener = () => {
           modelsCleared += 1;
         }
 
-        const { controlNets } = state.controlNet;
-        forEach(controlNets, (controlNet, controlNetId) => {
-          if (controlNet.model?.base_model !== base_model) {
-            dispatch(controlNetRemoved({ controlNetId }));
+        // handle incompatible controlnets
+        selectControlAdapterAll(state.controlAdapters).forEach((ca) => {
+          if (ca.model?.base_model !== base_model) {
+            dispatch(
+              controlAdapterIsEnabledChanged({ id: ca.id, isEnabled: false })
+            );
             modelsCleared += 1;
           }
         });
@@ -67,9 +73,9 @@ export const addModelSelectedListener = () => {
           dispatch(
             addToast(
               makeToast({
-                title: `Base model changed, cleared ${modelsCleared} incompatible submodel${
-                  modelsCleared === 1 ? '' : 's'
-                }`,
+                title: t('toast.baseModelChangedCleared', {
+                  count: modelsCleared,
+                }),
                 status: 'warning',
               })
             )

@@ -1,4 +1,4 @@
-import { FullTagDescription } from '@reduxjs/toolkit/dist/query/endpointDefinitions';
+import { TagDescription } from '@reduxjs/toolkit/dist/query/endpointDefinitions';
 import {
   BaseQueryFn,
   FetchArgs,
@@ -9,6 +9,8 @@ import {
 import { $authToken, $baseUrl, $projectId } from 'services/api/client';
 
 export const tagTypes = [
+  'AppVersion',
+  'AppConfig',
   'Board',
   'BoardImagesTotal',
   'BoardAssetsTotal',
@@ -17,11 +19,27 @@ export const tagTypes = [
   'ImageList',
   'ImageMetadata',
   'ImageMetadataFromFile',
+  'IntermediatesCount',
+  'SessionQueueItem',
+  'SessionQueueStatus',
+  'SessionProcessorStatus',
+  'CurrentSessionQueueItem',
+  'NextSessionQueueItem',
+  'BatchStatus',
+  'InvocationCacheStatus',
   'Model',
-];
-export type ApiFullTagDescription = FullTagDescription<
-  (typeof tagTypes)[number]
->;
+  'T2IAdapterModel',
+  'MainModel',
+  'OnnxModel',
+  'VaeModel',
+  'IPAdapterModel',
+  'TextualInversionModel',
+  'ControlNetModel',
+  'LoRAModel',
+  'SDXLRefinerModel',
+  'Workflow',
+] as const;
+export type ApiTagDescription = TagDescription<(typeof tagTypes)[number]>;
 export const LIST_TAG = 'LIST';
 
 const dynamicBaseQuery: BaseQueryFn<

@@ -6,68 +6,56 @@
 #
 # Coauthor: Kevin Turner http://github.com/keturn
 #
-import sys
 import argparse
 import io
 import os
-import psutil
 import shutil
+import sys
 import textwrap
-import torch
 import traceback
-import yaml
 import warnings
 from argparse import Namespace
 from enum import Enum
 from pathlib import Path
 from shutil import get_terminal_size
-from typing import get_type_hints, get_args, Any
+from typing import Any, get_args, get_type_hints
 from urllib import request
 
 import npyscreen
-import transformers
 import omegaconf
+import psutil
+import torch
+import transformers
+import yaml
 from diffusers import AutoencoderKL
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from huggingface_hub import HfFolder
 from huggingface_hub import login as hf_hub_login
 from omegaconf import OmegaConf
+from pydantic.error_wrappers import ValidationError
 from tqdm import tqdm
-from transformers import (
-    CLIPTextModel,
-    CLIPTextConfig,
-    CLIPTokenizer,
-    AutoFeatureExtractor,
-    BertTokenizerFast,
-)
-import invokeai.configs as configs
+from transformers import AutoFeatureExtractor, BertTokenizerFast, CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
-from invokeai.app.services.config import (
-    InvokeAIAppConfig,
-)
+import invokeai.configs as configs
+from invokeai.app.services.config import InvokeAIAppConfig
+from invokeai.backend.install.legacy_arg_parsing import legacy_parser
+from invokeai.backend.install.model_install_backend import InstallSelections, ModelInstall, hf_download_from_pretrained
+from invokeai.backend.model_management.model_probe import BaseModelType, ModelType
 from invokeai.backend.util.logging import InvokeAILogger
 from invokeai.frontend.install.model_install import addModelsForm, process_and_execute
 
 # TO DO - Move all the frontend code into invokeai.frontend.install
 from invokeai.frontend.install.widgets import (
-    SingleSelectColumnsSimple,
-    MultiSelectColumns,
-    CenteredButtonPress,
-    FileBox,
-    set_min_terminal_size,
-    CyclingForm,
     MIN_COLS,
     MIN_LINES,
+    CenteredButtonPress,
+    CyclingForm,
+    FileBox,
+    MultiSelectColumns,
+    SingleSelectColumnsSimple,
     WindowTooSmallException,
+    set_min_terminal_size,
 )
-from invokeai.backend.install.legacy_arg_parsing import legacy_parser
-from invokeai.backend.install.model_install_backend import (
-    hf_download_from_pretrained,
-    InstallSelections,
-    ModelInstall,
-)
-from invokeai.backend.model_management.model_probe import ModelType, BaseModelType
-from pydantic.error_wrappers import ValidationError
 
 warnings.filterwarnings("ignore")
 transformers.logging.set_verbosity_error()
@@ -82,7 +70,6 @@ def get_literal_fields(field) -> list[Any]:
 config = InvokeAIAppConfig.get_config()
 
 Model_dir = "models"
-
 Default_config_file = config.model_conf_path
 SD_Configs = config.legacy_conf_path
 
@@ -105,7 +92,7 @@ INIT_FILE_PREAMBLE = """# InvokeAI initialization file
 # or renaming it and then running invokeai-configure again.
 """
 
-logger = InvokeAILogger.getLogger()
+logger = InvokeAILogger.get_logger()
 
 
 class DummyWidgetValue(Enum):
@@ -470,7 +457,7 @@ Use cursor arrows to make a checkbox selection, and space to toggle.
         )
         self.add_widget_intelligent(
             npyscreen.TitleFixedText,
-            name="Model RAM cache size (GB). Make this at least large enough to hold a single full model.",
+            name="Model RAM cache size (GB). Make this at least large enough to hold a single full model (2GB for SD-1, 6GB for SDXL).",
             begin_entry_at=0,
             editable=False,
             color="CONTROL",
@@ -663,8 +650,19 @@ def edit_opts(program_opts: Namespace, invokeai_opts: Namespace) -> argparse.Nam
     return editApp.new_opts()
 
 
+def default_ramcache() -> float:
+    """Run a heuristic for the default RAM cache based on installed RAM."""
+
+    # Note that on my 64 GB machine, psutil.virtual_memory().total gives 62 GB,
+    # So we adjust everthing down a bit.
+    return (
+        15.0 if MAX_RAM >= 60 else 7.5 if MAX_RAM >= 30 else 4 if MAX_RAM >= 14 else 2.1
+    )  # 2.1 is just large enough for sd 1.5 ;-)
+
+
 def default_startup_options(init_file: Path) -> Namespace:
     opts = InvokeAIAppConfig.get_config()
+    opts.ram = opts.ram or default_ramcache()
     return opts
 
 
@@ -795,7 +793,11 @@ def migrate_init_file(legacy_format: Path):
     old = legacy_parser.parse_args([f"@{str(legacy_format)}"])
     new = InvokeAIAppConfig.get_config()
 
-    fields = [x for x, y in InvokeAIAppConfig.__fields__.items() if y.field_info.extra.get("category") != "DEPRECATED"]
+    fields = [
+        x
+        for x, y in InvokeAIAppConfig.model_fields.items()
+        if (y.json_schema_extra.get("category", None) if y.json_schema_extra else None) != "DEPRECATED"
+    ]
     for attr in fields:
         if hasattr(old, attr):
             try:
@@ -906,7 +908,7 @@ def main():
     if opt.full_precision:
         invoke_args.extend(["--precision", "float32"])
     config.parse_args(invoke_args)
-    logger = InvokeAILogger().getLogger(config=config)
+    logger = InvokeAILogger().get_logger(config=config)
 
     errors = set()
 

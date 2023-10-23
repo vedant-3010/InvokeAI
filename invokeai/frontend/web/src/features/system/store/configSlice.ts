@@ -7,7 +7,7 @@ export const initialConfigState: AppConfig = {
   shouldUpdateImagesOnConnect: false,
   shouldFetchMetadataFromApi: false,
   disabledTabs: [],
-  disabledFeatures: ['lightbox', 'faceRestore', 'batches'],
+  disabledFeatures: ['lightbox', 'faceRestore', 'batches', 'bulkDownload'],
   disabledSDFeatures: [
     'variation',
     'symmetry',
@@ -24,8 +24,8 @@ export const initialConfigState: AppConfig = {
     iterations: {
       initial: 1,
       min: 1,
-      sliderMax: 20,
-      inputMax: 9999,
+      sliderMax: 1000,
+      inputMax: 10000,
       fineStep: 1,
       coarseStep: 1,
     },
@@ -62,6 +62,14 @@ export const initialConfigState: AppConfig = {
       coarseStep: 0.5,
     },
     img2imgStrength: {
+      initial: 0.7,
+      min: 0,
+      sliderMax: 1,
+      inputMax: 1,
+      fineStep: 0.01,
+      coarseStep: 0.05,
+    },
+    hrfStrength: {
       initial: 0.7,
       min: 0,
       sliderMax: 1,

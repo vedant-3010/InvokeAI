@@ -5,6 +5,7 @@ import { configChanged } from 'features/system/store/configSlice';
 import { clamp } from 'lodash-es';
 import { ImageDTO } from 'services/api/types';
 
+import { isAnyControlAdapterAdded } from 'features/controlAdapters/store/controlAdaptersSlice';
 import { clipSkipMap } from '../types/constants';
 import {
   CanvasCoherenceModeParam,
@@ -26,6 +27,10 @@ import {
 } from '../types/parameterSchemas';
 
 export interface GenerationState {
+  hrfHeight: HeightParam;
+  hrfWidth: WidthParam;
+  hrfEnabled: boolean;
+  hrfStrength: StrengthParam;
   cfgScale: CfgScaleParam;
   height: HeightParam;
   img2imgStrength: StrengthParam;
@@ -46,7 +51,6 @@ export interface GenerationState {
   shouldFitToWidthHeight: boolean;
   shouldGenerateVariations: boolean;
   shouldRandomizeSeed: boolean;
-  shouldUseNoiseSettings: boolean;
   steps: StepsParam;
   threshold: number;
   infillTileSize: number;
@@ -69,6 +73,10 @@ export interface GenerationState {
 }
 
 export const initialGenerationState: GenerationState = {
+  hrfHeight: 64,
+  hrfWidth: 64,
+  hrfStrength: 0.75,
+  hrfEnabled: false,
   cfgScale: 7.5,
   height: 512,
   img2imgStrength: 0.75,
@@ -80,7 +88,7 @@ export const initialGenerationState: GenerationState = {
   scheduler: 'euler',
   maskBlur: 16,
   maskBlurMethod: 'box',
-  canvasCoherenceMode: 'edge',
+  canvasCoherenceMode: 'unmasked',
   canvasCoherenceSteps: 20,
   canvasCoherenceStrength: 0.3,
   seed: 0,
@@ -88,7 +96,6 @@ export const initialGenerationState: GenerationState = {
   shouldFitToWidthHeight: true,
   shouldGenerateVariations: false,
   shouldRandomizeSeed: true,
-  shouldUseNoiseSettings: false,
   steps: 50,
   threshold: 0,
   infillTileSize: 32,
@@ -244,9 +251,6 @@ export const generationSlice = createSlice({
     setVerticalSymmetrySteps: (state, action: PayloadAction<number>) => {
       state.verticalSymmetrySteps = action.payload;
     },
-    setShouldUseNoiseSettings: (state, action: PayloadAction<boolean>) => {
-      state.shouldUseNoiseSettings = action.payload;
-    },
     initialImageChanged: (state, action: PayloadAction<ImageDTO>) => {
       const { image_name, width, height } = action.payload;
       state.initialImage = { imageName: image_name, width, height };
@@ -275,14 +279,20 @@ export const generationSlice = createSlice({
     setClipSkip: (state, action: PayloadAction<number>) => {
       state.clipSkip = action.payload;
     },
+    setHrfHeight: (state, action: PayloadAction<number>) => {
+      state.hrfHeight = action.payload;
+    },
+    setHrfWidth: (state, action: PayloadAction<number>) => {
+      state.hrfWidth = action.payload;
+    },
+    setHrfStrength: (state, action: PayloadAction<number>) => {
+      state.hrfStrength = action.payload;
+    },
+    setHrfEnabled: (state, action: PayloadAction<boolean>) => {
+      state.hrfEnabled = action.payload;
+    },
     shouldUseCpuNoiseChanged: (state, action: PayloadAction<boolean>) => {
       state.shouldUseCpuNoise = action.payload;
-    },
-    setShouldShowAdvancedOptions: (state, action: PayloadAction<boolean>) => {
-      state.shouldShowAdvancedOptions = action.payload;
-      if (!action.payload) {
-        state.clipSkip = 0;
-      }
     },
     setAspectRatio: (state, action: PayloadAction<number | null>) => {
       const newAspectRatio = action.payload;
@@ -313,10 +323,13 @@ export const generationSlice = createSlice({
         }
       }
     });
-    builder.addCase(setShouldShowAdvancedOptions, (state, action) => {
-      const advancedOptionsStatus = action.payload;
-      if (!advancedOptionsStatus) {
-        state.clipSkip = 0;
+
+    // TODO: This is a temp fix to reduce issues with T2I adapter having a different downscaling
+    // factor than the UNet. Hopefully we get an upstream fix in diffusers.
+    builder.addMatcher(isAnyControlAdapterAdded, (state, action) => {
+      if (action.payload.type === 't2i_adapter') {
+        state.width = roundToMultiple(state.width, 64);
+        state.height = roundToMultiple(state.height, 64);
       }
     });
   },
@@ -359,12 +372,14 @@ export const {
   initialImageChanged,
   modelChanged,
   vaeSelected,
-  setShouldUseNoiseSettings,
   setSeamlessXAxis,
   setSeamlessYAxis,
   setClipSkip,
+  setHrfHeight,
+  setHrfWidth,
+  setHrfStrength,
+  setHrfEnabled,
   shouldUseCpuNoiseChanged,
-  setShouldShowAdvancedOptions,
   setAspectRatio,
   setShouldLockAspectRatio,
   vaePrecisionChanged,

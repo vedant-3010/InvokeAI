@@ -2,7 +2,7 @@
 # initial implementation by Gregg Helt, 2023
 # heavily leverages controlnet_aux package: https://github.com/patrickvonplaten/controlnet_aux
 from builtins import bool, float
-from typing import Dict, List, Literal, Optional, Union
+from typing import Dict, List, Literal, Union
 
 import cv2
 import numpy as np
@@ -24,26 +24,25 @@ from controlnet_aux import (
 )
 from controlnet_aux.util import HWC3, ade_palette
 from PIL import Image
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from invokeai.app.invocations.primitives import ImageField, ImageOutput
-
+from invokeai.app.services.image_records.image_records_common import ImageCategory, ResourceOrigin
 
 from ...backend.model_management import BaseModelType
-from ..models.image import ImageCategory, ResourceOrigin
 from .baseinvocation import (
     BaseInvocation,
     BaseInvocationOutput,
     FieldDescriptions,
-    InputField,
     Input,
+    InputField,
     InvocationContext,
     OutputField,
-    UIType,
+    WithMetadata,
+    WithWorkflow,
     invocation,
     invocation_output,
 )
-
 
 CONTROLNET_MODE_VALUES = Literal["balanced", "more_prompt", "more_control", "unbalanced"]
 CONTROLNET_RESIZE_VALUES = Literal[
@@ -60,6 +59,8 @@ class ControlNetModelField(BaseModel):
     model_name: str = Field(description="Name of the ControlNet model")
     base_model: BaseModelType = Field(description="Base model")
 
+    model_config = ConfigDict(protected_namespaces=())
+
 
 class ControlField(BaseModel):
     image: ImageField = Field(description="The control image")
@@ -74,7 +75,7 @@ class ControlField(BaseModel):
     control_mode: CONTROLNET_MODE_VALUES = Field(default="balanced", description="The control mode to use")
     resize_mode: CONTROLNET_RESIZE_VALUES = Field(default="just_resize", description="The resize mode to use")
 
-    @validator("control_weight")
+    @field_validator("control_weight")
     def validate_control_weight(cls, v):
         """Validate that all control weights in the valid range"""
         if isinstance(v, list):
@@ -102,7 +103,7 @@ class ControlNetInvocation(BaseInvocation):
     image: ImageField = InputField(description="The control image")
     control_model: ControlNetModelField = InputField(description=FieldDescriptions.controlnet_model, input=Input.Direct)
     control_weight: Union[float, List[float]] = InputField(
-        default=1.0, description="The weight given to the ControlNet", ui_type=UIType.Float
+        default=1.0, description="The weight given to the ControlNet"
     )
     begin_step_percent: float = InputField(
         default=0, ge=-1, le=2, description="When the ControlNet is first applied (% of total steps)"
@@ -127,15 +128,13 @@ class ControlNetInvocation(BaseInvocation):
         )
 
 
-@invocation(
-    "image_processor", title="Base Image Processor", tags=["controlnet"], category="controlnet", version="1.0.0"
-)
-class ImageProcessorInvocation(BaseInvocation):
+# This invocation exists for other invocations to subclass it - do not register with @invocation!
+class ImageProcessorInvocation(BaseInvocation, WithMetadata, WithWorkflow):
     """Base class for invocations that preprocess images for ControlNet"""
 
     image: ImageField = InputField(description="The image to process")
 
-    def run_processor(self, image):
+    def run_processor(self, image: Image.Image) -> Image.Image:
         # superclass just passes through image without processing
         return image
 
@@ -153,6 +152,7 @@ class ImageProcessorInvocation(BaseInvocation):
             session_id=context.graph_execution_state_id,
             node_id=self.id,
             is_intermediate=self.is_intermediate,
+            metadata=self.metadata,
             workflow=self.workflow,
         )
 
@@ -396,9 +396,9 @@ class ContentShuffleImageProcessorInvocation(ImageProcessorInvocation):
 
     detect_resolution: int = InputField(default=512, ge=0, description=FieldDescriptions.detect_res)
     image_resolution: int = InputField(default=512, ge=0, description=FieldDescriptions.image_res)
-    h: Optional[int] = InputField(default=512, ge=0, description="Content shuffle `h` parameter")
-    w: Optional[int] = InputField(default=512, ge=0, description="Content shuffle `w` parameter")
-    f: Optional[int] = InputField(default=256, ge=0, description="Content shuffle `f` parameter")
+    h: int = InputField(default=512, ge=0, description="Content shuffle `h` parameter")
+    w: int = InputField(default=512, ge=0, description="Content shuffle `w` parameter")
+    f: int = InputField(default=256, ge=0, description="Content shuffle `f` parameter")
 
     def run_processor(self, image):
         content_shuffle_processor = ContentShuffleDetector()
@@ -562,3 +562,33 @@ class SamDetectorReproducibleColors(SamDetector):
             img[:, :] = ann_color
             final_img.paste(Image.fromarray(img, mode="RGB"), (0, 0), Image.fromarray(np.uint8(m * 255)))
         return np.array(final_img, dtype=np.uint8)
+
+
+@invocation(
+    "color_map_image_processor",
+    title="Color Map Processor",
+    tags=["controlnet"],
+    category="controlnet",
+    version="1.0.0",
+)
+class ColorMapImageProcessorInvocation(ImageProcessorInvocation):
+    """Generates a color map from the provided image"""
+
+    color_map_tile_size: int = InputField(default=64, ge=0, description=FieldDescriptions.tile_size)
+
+    def run_processor(self, image: Image.Image):
+        image = image.convert("RGB")
+        np_image = np.array(image, dtype=np.uint8)
+        height, width = np_image.shape[:2]
+
+        width_tile_size = min(self.color_map_tile_size, width)
+        height_tile_size = min(self.color_map_tile_size, height)
+
+        color_map = cv2.resize(
+            np_image,
+            (width // width_tile_size, height // height_tile_size),
+            interpolation=cv2.INTER_CUBIC,
+        )
+        color_map = cv2.resize(color_map, (width, height), interpolation=cv2.INTER_NEAREST)
+        color_map = Image.fromarray(color_map)
+        return color_map

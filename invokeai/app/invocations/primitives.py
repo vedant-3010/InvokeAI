@@ -226,6 +226,12 @@ class ImageField(BaseModel):
     image_name: str = Field(description="The name of the image")
 
 
+class BoardField(BaseModel):
+    """A board primitive field"""
+
+    board_id: str = Field(description="The id of the board")
+
+
 @invocation_output("image_output")
 class ImageOutput(BaseInvocationOutput):
     """Base class for nodes that output a single image"""
@@ -245,7 +251,9 @@ class ImageCollectionOutput(BaseInvocationOutput):
 
 
 @invocation("image", title="Image Primitive", tags=["primitives", "image"], category="primitives", version="1.0.0")
-class ImageInvocation(BaseInvocation):
+class ImageInvocation(
+    BaseInvocation,
+):
     """An image primitive value"""
 
     image: ImageField = InputField(description="The image to load")
