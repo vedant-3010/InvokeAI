@@ -6,12 +6,13 @@ import {
   createListenerMiddleware,
 } from '@reduxjs/toolkit';
 
-import type { AppDispatch, RootState } from '../../store';
+import type { AppDispatch, RootState } from 'app/store/store';
 import { addCommitStagingAreaImageListener } from './listeners/addCommitStagingAreaImageListener';
 import { addFirstListImagesListener } from './listeners/addFirstListImagesListener.ts';
 import { addAnyEnqueuedListener } from './listeners/anyEnqueued';
 import { addAppConfigReceivedListener } from './listeners/appConfigReceived';
 import { addAppStartedListener } from './listeners/appStarted';
+import { addBatchEnqueuedListener } from './listeners/batchEnqueued';
 import { addDeleteBoardAndImagesFulfilledListener } from './listeners/boardAndImagesDeleted';
 import { addBoardIdSelectedListener } from './listeners/boardIdSelected';
 import { addCanvasCopiedToClipboardListener } from './listeners/canvasCopiedToClipboard';
@@ -70,9 +71,8 @@ import { addSocketUnsubscribedEventListener as addSocketUnsubscribedListener } f
 import { addStagingAreaImageSavedListener } from './listeners/stagingAreaImageSaved';
 import { addTabChangedListener } from './listeners/tabChanged';
 import { addUpscaleRequestedListener } from './listeners/upscaleRequested';
-import { addWorkflowLoadedListener } from './listeners/workflowLoaded';
-import { addBatchEnqueuedListener } from './listeners/batchEnqueued';
-import { addControlAdapterAddedOrEnabledListener } from './listeners/controlAdapterAddedOrEnabled';
+import { addWorkflowLoadRequestedListener } from './listeners/workflowLoadRequested';
+import { addUpdateAllNodesRequestedListener } from './listeners/updateAllNodesRequested';
 
 export const listenerMiddleware = createListenerMiddleware();
 
@@ -178,7 +178,8 @@ addBoardIdSelectedListener();
 addReceivedOpenAPISchemaListener();
 
 // Workflows
-addWorkflowLoadedListener();
+addWorkflowLoadRequestedListener();
+addUpdateAllNodesRequestedListener();
 
 // DND
 addImageDroppedListener();
@@ -200,7 +201,3 @@ addTabChangedListener();
 
 // Dynamic prompts
 addDynamicPromptsListener();
-
-// Display toast when controlnet or t2i adapter enabled
-// TODO: Remove when they can both be enabled at same time
-addControlAdapterAddedOrEnabledListener();

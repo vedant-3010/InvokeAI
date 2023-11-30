@@ -5,7 +5,7 @@ import { useAppSelector } from 'app/store/storeHooks';
 import IAICollapse from 'common/components/IAICollapse';
 import { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useFeatureStatus } from '../../system/hooks/useFeatureStatus';
+import { useFeatureStatus } from 'features/system/hooks/useFeatureStatus';
 import ParamDynamicPromptsMaxPrompts from './ParamDynamicPromptsMaxPrompts';
 import ParamDynamicPromptsPreview from './ParamDynamicPromptsPreview';
 import ParamDynamicPromptsSeedBehaviour from './ParamDynamicPromptsSeedBehaviour';
@@ -16,15 +16,13 @@ const ParamDynamicPromptsCollapse = () => {
     () =>
       createSelector(stateSelector, ({ dynamicPrompts }) => {
         const count = dynamicPrompts.prompts.length;
-        if (count === 1) {
-          return t('dynamicPrompts.promptsWithCount_one', {
-            count,
-          });
-        } else {
+        if (count > 1) {
           return t('dynamicPrompts.promptsWithCount_other', {
             count,
           });
         }
+
+        return;
       }),
     [t]
   );

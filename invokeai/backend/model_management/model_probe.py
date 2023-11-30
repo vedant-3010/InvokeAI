@@ -53,6 +53,7 @@ class ModelProbe(object):
         "StableDiffusionXLPipeline": ModelType.Main,
         "StableDiffusionXLImg2ImgPipeline": ModelType.Main,
         "StableDiffusionXLInpaintPipeline": ModelType.Main,
+        "LatentConsistencyModelPipeline": ModelType.Main,
         "AutoencoderKL": ModelType.Vae,
         "AutoencoderTiny": ModelType.Vae,
         "ControlNetModel": ModelType.ControlNet,
@@ -183,12 +184,13 @@ class ModelProbe(object):
         if model:
             class_name = model.__class__.__name__
         else:
+            for suffix in ["bin", "safetensors"]:
+                if (folder_path / f"learned_embeds.{suffix}").exists():
+                    return ModelType.TextualInversion
+                if (folder_path / f"pytorch_lora_weights.{suffix}").exists():
+                    return ModelType.Lora
             if (folder_path / "unet/model.onnx").exists():
                 return ModelType.ONNX
-            if (folder_path / "learned_embeds.bin").exists():
-                return ModelType.TextualInversion
-            if (folder_path / "pytorch_lora_weights.bin").exists():
-                return ModelType.Lora
             if (folder_path / "image_encoder.txt").exists():
                 return ModelType.IPAdapter
 
@@ -223,7 +225,7 @@ class ModelProbe(object):
         with SilenceWarnings():
             if model_path.suffix.endswith((".ckpt", ".pt", ".bin")):
                 cls._scan_model(model_path, model_path)
-                return torch.load(model_path)
+                return torch.load(model_path, map_location="cpu")
             else:
                 return safetensors.torch.load_file(model_path)
 
@@ -236,7 +238,7 @@ class ModelProbe(object):
         # scan model
         scan_result = scan_file_path(checkpoint)
         if scan_result.infected_files != 0:
-            raise "The model {model_name} is potentially infected by malware. Aborting import."
+            raise Exception("The model {model_name} is potentially infected by malware. Aborting import.")
 
 
 # ##################################################3

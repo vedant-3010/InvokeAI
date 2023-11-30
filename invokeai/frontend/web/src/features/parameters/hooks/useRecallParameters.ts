@@ -24,7 +24,7 @@ import {
   IPAdapterMetadataItem,
   LoRAMetadataItem,
   T2IAdapterMetadataItem,
-} from 'features/nodes/types/types';
+} from 'features/nodes/types/metadata';
 import {
   refinerModelChanged,
   setNegativeStylePromptSDXL,
@@ -36,6 +36,7 @@ import {
   setRefinerStart,
   setRefinerSteps,
 } from 'features/sdxl/store/sdxlSlice';
+import { isNil } from 'lodash-es';
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ImageDTO } from 'services/api/types';
@@ -49,12 +50,18 @@ import {
   useGetIPAdapterModelsQuery,
   useGetLoRAModelsQuery,
   useGetT2IAdapterModelsQuery,
-} from '../../../services/api/endpoints/models';
-import { loraRecalled, lorasCleared } from '../../lora/store/loraSlice';
-import { initialImageSelected, modelSelected } from '../store/actions';
+} from 'services/api/endpoints/models';
+import { loraRecalled, lorasCleared } from 'features/lora/store/loraSlice';
+import {
+  initialImageSelected,
+  modelSelected,
+} from 'features/parameters/store/actions';
 import {
   setCfgScale,
   setHeight,
+  setHrfEnabled,
+  setHrfMethod,
+  setHrfStrength,
   setImg2imgStrength,
   setNegativePrompt,
   setPositivePrompt,
@@ -62,28 +69,32 @@ import {
   setSeed,
   setSteps,
   setWidth,
-} from '../store/generationSlice';
+  vaeSelected,
+} from 'features/parameters/store/generationSlice';
 import {
-  isValidCfgScale,
-  isValidControlNetModel,
-  isValidHeight,
-  isValidIPAdapterModel,
-  isValidLoRAModel,
-  isValidMainModel,
-  isValidNegativePrompt,
-  isValidPositivePrompt,
-  isValidSDXLNegativeStylePrompt,
-  isValidSDXLPositiveStylePrompt,
-  isValidSDXLRefinerModel,
-  isValidSDXLRefinerNegativeAestheticScore,
-  isValidSDXLRefinerPositiveAestheticScore,
-  isValidSDXLRefinerStart,
-  isValidScheduler,
-  isValidSeed,
-  isValidSteps,
-  isValidStrength,
-  isValidWidth,
-} from '../types/parameterSchemas';
+  isParameterHRFEnabled,
+  isParameterCFGScale,
+  isParameterControlNetModel,
+  isParameterHeight,
+  isParameterHRFMethod,
+  isParameterIPAdapterModel,
+  isParameterLoRAModel,
+  isParameterModel,
+  isParameterNegativePrompt,
+  isParameterPositivePrompt,
+  isParameterNegativeStylePromptSDXL,
+  isParameterPositiveStylePromptSDXL,
+  isParameterSDXLRefinerModel,
+  isParameterSDXLRefinerNegativeAestheticScore,
+  isParameterSDXLRefinerPositiveAestheticScore,
+  isParameterSDXLRefinerStart,
+  isParameterScheduler,
+  isParameterSeed,
+  isParameterSteps,
+  isParameterStrength,
+  isParameterVAEModel,
+  isParameterWidth,
+} from 'features/parameters/types/parameterSchemas';
 
 const selector = createSelector(
   stateSelector,
@@ -152,24 +163,24 @@ export const useRecallParameters = () => {
       negativeStylePrompt: unknown
     ) => {
       if (
-        isValidPositivePrompt(positivePrompt) ||
-        isValidNegativePrompt(negativePrompt) ||
-        isValidSDXLPositiveStylePrompt(positiveStylePrompt) ||
-        isValidSDXLNegativeStylePrompt(negativeStylePrompt)
+        isParameterPositivePrompt(positivePrompt) ||
+        isParameterNegativePrompt(negativePrompt) ||
+        isParameterPositiveStylePromptSDXL(positiveStylePrompt) ||
+        isParameterNegativeStylePromptSDXL(negativeStylePrompt)
       ) {
-        if (isValidPositivePrompt(positivePrompt)) {
+        if (isParameterPositivePrompt(positivePrompt)) {
           dispatch(setPositivePrompt(positivePrompt));
         }
 
-        if (isValidNegativePrompt(negativePrompt)) {
+        if (isParameterNegativePrompt(negativePrompt)) {
           dispatch(setNegativePrompt(negativePrompt));
         }
 
-        if (isValidSDXLPositiveStylePrompt(positiveStylePrompt)) {
+        if (isParameterPositiveStylePromptSDXL(positiveStylePrompt)) {
           dispatch(setPositiveStylePromptSDXL(positiveStylePrompt));
         }
 
-        if (isValidSDXLPositiveStylePrompt(negativeStylePrompt)) {
+        if (isParameterPositiveStylePromptSDXL(negativeStylePrompt)) {
           dispatch(setNegativeStylePromptSDXL(negativeStylePrompt));
         }
 
@@ -186,7 +197,7 @@ export const useRecallParameters = () => {
    */
   const recallPositivePrompt = useCallback(
     (positivePrompt: unknown) => {
-      if (!isValidPositivePrompt(positivePrompt)) {
+      if (!isParameterPositivePrompt(positivePrompt)) {
         parameterNotSetToast();
         return;
       }
@@ -201,7 +212,7 @@ export const useRecallParameters = () => {
    */
   const recallNegativePrompt = useCallback(
     (negativePrompt: unknown) => {
-      if (!isValidNegativePrompt(negativePrompt)) {
+      if (!isParameterNegativePrompt(negativePrompt)) {
         parameterNotSetToast();
         return;
       }
@@ -216,7 +227,7 @@ export const useRecallParameters = () => {
    */
   const recallSDXLPositiveStylePrompt = useCallback(
     (positiveStylePrompt: unknown) => {
-      if (!isValidSDXLPositiveStylePrompt(positiveStylePrompt)) {
+      if (!isParameterPositiveStylePromptSDXL(positiveStylePrompt)) {
         parameterNotSetToast();
         return;
       }
@@ -231,7 +242,7 @@ export const useRecallParameters = () => {
    */
   const recallSDXLNegativeStylePrompt = useCallback(
     (negativeStylePrompt: unknown) => {
-      if (!isValidSDXLNegativeStylePrompt(negativeStylePrompt)) {
+      if (!isParameterNegativeStylePromptSDXL(negativeStylePrompt)) {
         parameterNotSetToast();
         return;
       }
@@ -246,7 +257,7 @@ export const useRecallParameters = () => {
    */
   const recallSeed = useCallback(
     (seed: unknown) => {
-      if (!isValidSeed(seed)) {
+      if (!isParameterSeed(seed)) {
         parameterNotSetToast();
         return;
       }
@@ -261,7 +272,7 @@ export const useRecallParameters = () => {
    */
   const recallCfgScale = useCallback(
     (cfgScale: unknown) => {
-      if (!isValidCfgScale(cfgScale)) {
+      if (!isParameterCFGScale(cfgScale)) {
         parameterNotSetToast();
         return;
       }
@@ -276,7 +287,7 @@ export const useRecallParameters = () => {
    */
   const recallModel = useCallback(
     (model: unknown) => {
-      if (!isValidMainModel(model)) {
+      if (!isParameterModel(model)) {
         parameterNotSetToast();
         return;
       }
@@ -291,7 +302,7 @@ export const useRecallParameters = () => {
    */
   const recallScheduler = useCallback(
     (scheduler: unknown) => {
-      if (!isValidScheduler(scheduler)) {
+      if (!isParameterScheduler(scheduler)) {
         parameterNotSetToast();
         return;
       }
@@ -302,11 +313,30 @@ export const useRecallParameters = () => {
   );
 
   /**
+   * Recall vae model
+   */
+  const recallVaeModel = useCallback(
+    (vae: unknown) => {
+      if (!isParameterVAEModel(vae) && !isNil(vae)) {
+        parameterNotSetToast();
+        return;
+      }
+      if (isNil(vae)) {
+        dispatch(vaeSelected(null));
+      } else {
+        dispatch(vaeSelected(vae));
+      }
+      parameterSetToast();
+    },
+    [dispatch, parameterSetToast, parameterNotSetToast]
+  );
+
+  /**
    * Recall steps with toast
    */
   const recallSteps = useCallback(
     (steps: unknown) => {
-      if (!isValidSteps(steps)) {
+      if (!isParameterSteps(steps)) {
         parameterNotSetToast();
         return;
       }
@@ -321,7 +351,7 @@ export const useRecallParameters = () => {
    */
   const recallWidth = useCallback(
     (width: unknown) => {
-      if (!isValidWidth(width)) {
+      if (!isParameterWidth(width)) {
         parameterNotSetToast();
         return;
       }
@@ -336,7 +366,7 @@ export const useRecallParameters = () => {
    */
   const recallHeight = useCallback(
     (height: unknown) => {
-      if (!isValidHeight(height)) {
+      if (!isParameterHeight(height)) {
         parameterNotSetToast();
         return;
       }
@@ -347,15 +377,80 @@ export const useRecallParameters = () => {
   );
 
   /**
+   * Recall width and height with toast
+   */
+  const recallWidthAndHeight = useCallback(
+    (width: unknown, height: unknown) => {
+      if (!isParameterWidth(width)) {
+        allParameterNotSetToast();
+        return;
+      }
+      if (!isParameterHeight(height)) {
+        allParameterNotSetToast();
+        return;
+      }
+      dispatch(setHeight(height));
+      dispatch(setWidth(width));
+      allParameterSetToast();
+    },
+    [dispatch, allParameterSetToast, allParameterNotSetToast]
+  );
+
+  /**
    * Recall strength with toast
    */
   const recallStrength = useCallback(
     (strength: unknown) => {
-      if (!isValidStrength(strength)) {
+      if (!isParameterStrength(strength)) {
         parameterNotSetToast();
         return;
       }
       dispatch(setImg2imgStrength(strength));
+      parameterSetToast();
+    },
+    [dispatch, parameterSetToast, parameterNotSetToast]
+  );
+
+  /**
+   * Recall high resolution enabled with toast
+   */
+  const recallHrfEnabled = useCallback(
+    (hrfEnabled: unknown) => {
+      if (!isParameterHRFEnabled(hrfEnabled)) {
+        parameterNotSetToast();
+        return;
+      }
+      dispatch(setHrfEnabled(hrfEnabled));
+      parameterSetToast();
+    },
+    [dispatch, parameterSetToast, parameterNotSetToast]
+  );
+
+  /**
+   * Recall high resolution strength with toast
+   */
+  const recallHrfStrength = useCallback(
+    (hrfStrength: unknown) => {
+      if (!isParameterStrength(hrfStrength)) {
+        parameterNotSetToast();
+        return;
+      }
+      dispatch(setHrfStrength(hrfStrength));
+      parameterSetToast();
+    },
+    [dispatch, parameterSetToast, parameterNotSetToast]
+  );
+
+  /**
+   * Recall high resolution method with toast
+   */
+  const recallHrfMethod = useCallback(
+    (hrfMethod: unknown) => {
+      if (!isParameterHRFMethod(hrfMethod)) {
+        parameterNotSetToast();
+        return;
+      }
+      dispatch(setHrfMethod(hrfMethod));
       parameterSetToast();
     },
     [dispatch, parameterSetToast, parameterNotSetToast]
@@ -369,7 +464,7 @@ export const useRecallParameters = () => {
 
   const prepareLoRAMetadataItem = useCallback(
     (loraMetadataItem: LoRAMetadataItem) => {
-      if (!isValidLoRAModel(loraMetadataItem.lora)) {
+      if (!isParameterLoRAModel(loraMetadataItem.lora)) {
         return { lora: null, error: 'Invalid LoRA model' };
       }
 
@@ -426,7 +521,7 @@ export const useRecallParameters = () => {
 
   const prepareControlNetMetadataItem = useCallback(
     (controlnetMetadataItem: ControlNetMetadataItem) => {
-      if (!isValidControlNetModel(controlnetMetadataItem.control_model)) {
+      if (!isParameterControlNetModel(controlnetMetadataItem.control_model)) {
         return { controlnet: null, error: 'Invalid ControlNet model' };
       }
 
@@ -521,7 +616,9 @@ export const useRecallParameters = () => {
 
   const prepareT2IAdapterMetadataItem = useCallback(
     (t2iAdapterMetadataItem: T2IAdapterMetadataItem) => {
-      if (!isValidControlNetModel(t2iAdapterMetadataItem.t2i_adapter_model)) {
+      if (
+        !isParameterControlNetModel(t2iAdapterMetadataItem.t2i_adapter_model)
+      ) {
         return { controlnet: null, error: 'Invalid ControlNet model' };
       }
 
@@ -611,7 +708,7 @@ export const useRecallParameters = () => {
 
   const prepareIPAdapterMetadataItem = useCallback(
     (ipAdapterMetadataItem: IPAdapterMetadataItem) => {
-      if (!isValidIPAdapterModel(ipAdapterMetadataItem?.ip_adapter_model)) {
+      if (!isParameterIPAdapterModel(ipAdapterMetadataItem?.ip_adapter_model)) {
         return { ipAdapter: null, error: 'Invalid IP Adapter model' };
       }
 
@@ -707,10 +804,14 @@ export const useRecallParameters = () => {
         positive_prompt,
         negative_prompt,
         scheduler,
+        vae,
         seed,
         steps,
         width,
         strength,
+        hrf_enabled,
+        hrf_strength,
+        hrf_method,
         positive_style_prompt,
         negative_style_prompt,
         refiner_model,
@@ -726,63 +827,91 @@ export const useRecallParameters = () => {
         t2iAdapters,
       } = metadata;
 
-      if (isValidCfgScale(cfg_scale)) {
+      if (isParameterCFGScale(cfg_scale)) {
         dispatch(setCfgScale(cfg_scale));
       }
-      if (isValidMainModel(model)) {
+
+      if (isParameterModel(model)) {
         dispatch(modelSelected(model));
       }
-      if (isValidPositivePrompt(positive_prompt)) {
+
+      if (isParameterPositivePrompt(positive_prompt)) {
         dispatch(setPositivePrompt(positive_prompt));
       }
-      if (isValidNegativePrompt(negative_prompt)) {
+
+      if (isParameterNegativePrompt(negative_prompt)) {
         dispatch(setNegativePrompt(negative_prompt));
       }
-      if (isValidScheduler(scheduler)) {
+
+      if (isParameterScheduler(scheduler)) {
         dispatch(setScheduler(scheduler));
       }
-      if (isValidSeed(seed)) {
+      if (isParameterVAEModel(vae) || isNil(vae)) {
+        if (isNil(vae)) {
+          dispatch(vaeSelected(null));
+        } else {
+          dispatch(vaeSelected(vae));
+        }
+      }
+
+      if (isParameterSeed(seed)) {
         dispatch(setSeed(seed));
       }
-      if (isValidSteps(steps)) {
+
+      if (isParameterSteps(steps)) {
         dispatch(setSteps(steps));
       }
-      if (isValidWidth(width)) {
+
+      if (isParameterWidth(width)) {
         dispatch(setWidth(width));
       }
-      if (isValidHeight(height)) {
+
+      if (isParameterHeight(height)) {
         dispatch(setHeight(height));
       }
-      if (isValidStrength(strength)) {
+
+      if (isParameterStrength(strength)) {
         dispatch(setImg2imgStrength(strength));
       }
 
-      if (isValidSDXLPositiveStylePrompt(positive_style_prompt)) {
+      if (isParameterHRFEnabled(hrf_enabled)) {
+        dispatch(setHrfEnabled(hrf_enabled));
+      }
+
+      if (isParameterStrength(hrf_strength)) {
+        dispatch(setHrfStrength(hrf_strength));
+      }
+
+      if (isParameterHRFMethod(hrf_method)) {
+        dispatch(setHrfMethod(hrf_method));
+      }
+
+      if (isParameterPositiveStylePromptSDXL(positive_style_prompt)) {
         dispatch(setPositiveStylePromptSDXL(positive_style_prompt));
       }
 
-      if (isValidSDXLNegativeStylePrompt(negative_style_prompt)) {
+      if (isParameterNegativeStylePromptSDXL(negative_style_prompt)) {
         dispatch(setNegativeStylePromptSDXL(negative_style_prompt));
       }
 
-      if (isValidSDXLRefinerModel(refiner_model)) {
+      if (isParameterSDXLRefinerModel(refiner_model)) {
         dispatch(refinerModelChanged(refiner_model));
       }
 
-      if (isValidSteps(refiner_steps)) {
+      if (isParameterSteps(refiner_steps)) {
         dispatch(setRefinerSteps(refiner_steps));
       }
 
-      if (isValidCfgScale(refiner_cfg_scale)) {
+      if (isParameterCFGScale(refiner_cfg_scale)) {
         dispatch(setRefinerCFGScale(refiner_cfg_scale));
       }
 
-      if (isValidScheduler(refiner_scheduler)) {
+      if (isParameterScheduler(refiner_scheduler)) {
         dispatch(setRefinerScheduler(refiner_scheduler));
       }
 
       if (
-        isValidSDXLRefinerPositiveAestheticScore(
+        isParameterSDXLRefinerPositiveAestheticScore(
           refiner_positive_aesthetic_score
         )
       ) {
@@ -792,7 +921,7 @@ export const useRecallParameters = () => {
       }
 
       if (
-        isValidSDXLRefinerNegativeAestheticScore(
+        isParameterSDXLRefinerNegativeAestheticScore(
           refiner_negative_aesthetic_score
         )
       ) {
@@ -801,7 +930,7 @@ export const useRecallParameters = () => {
         );
       }
 
-      if (isValidSDXLRefinerStart(refiner_start)) {
+      if (isParameterSDXLRefinerStart(refiner_start)) {
         dispatch(setRefinerStart(refiner_start));
       }
 
@@ -858,10 +987,15 @@ export const useRecallParameters = () => {
     recallCfgScale,
     recallModel,
     recallScheduler,
+    recallVaeModel,
     recallSteps,
     recallWidth,
     recallHeight,
+    recallWidthAndHeight,
     recallStrength,
+    recallHrfEnabled,
+    recallHrfStrength,
+    recallHrfMethod,
     recallLoRA,
     recallControlNet,
     recallIPAdapter,
